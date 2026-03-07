@@ -7,7 +7,7 @@ st.title("My Gemini Philosophy AI")
 
 # 1. APIキーの確認
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("SecretsにGEMINI_API_KEYが設定されていません。")
+    st.error("StreamlitのSecretsにGEMINI_API_KEYが設定されていません。")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -24,22 +24,16 @@ def load_memory():
 philosophical_context = load_memory()
 
 # 3. モデルの初期化
-# モデル名を models/ を抜いた "gemini-1.5-flash" に変更します。
-# Flashは応答が速く、NotFoundエラーが最も出にくい安定したモデルです。
+# NotFoundエラーを回避するため、最も汎用的なモデル名と設定を使用します
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
-    system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に深く対話してください：\n\n{philosophical_context}",
-    safety_settings=[
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
+    system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に深く対話してください：\n\n{philosophical_context}"
 )
 
 # 4. 会話の管理
 if "messages" not in st.session_state:
     st.session_state.messages = []
+    # チャット開始
     st.session_state.chat = model.start_chat(history=[])
 
 # 過去の履歴を表示
@@ -66,4 +60,5 @@ if prompt := st.chat_input("思考の続きを..."):
             placeholder.markdown(full_text)
             st.session_state.messages.append({"role": "assistant", "content": full_text})
         except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            # エラーの詳細を表示
+            st.error(f"エラーが発生しました。内容をご確認ください：\n{e}")
