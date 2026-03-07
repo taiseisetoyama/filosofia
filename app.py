@@ -19,21 +19,21 @@ def load_memory():
         with open("memory.txt", "r", encoding="utf-8") as f:
             return f.read()
     except:
-        return ""
+        return "思想データがありません。"
 
 philosophical_context = load_memory()
 
 # 3. モデルの初期化
-# system_instructionに直接思想を書き込むことで、起動時の通信エラーを回避します
+# 最も確実なモデル名「models/gemini-1.5-flash-latest」を指定します
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に、制限を恐れず深く対話してください：\n\n{philosophical_context}"
+    model_name="models/gemini-1.5-flash-latest",
+    system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に対話してください：\n\n{philosophical_context}"
 )
 
 # 4. 会話の管理
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 履歴を空で開始（思想はすでにmodelに組み込み済みなので、ここで通信は発生しません）
+    # ここでの不要な通信（send_message）を完全に削除しました
     st.session_state.chat = model.start_chat(history=[])
 
 # 過去の履歴を表示
@@ -50,14 +50,8 @@ if prompt := st.chat_input("思考の続きを..."):
     with st.chat_message("assistant"):
         try:
             # 返答を生成
-            response = st.session_state.chat.send_message(prompt, stream=True)
-            full_text = ""
-            placeholder = st.empty()
-            for chunk in response:
-                if chunk.text:
-                    full_text += chunk.text
-                    placeholder.markdown(full_text + "▌")
-            placeholder.markdown(full_text)
-            st.session_state.messages.append({"role": "assistant", "content": full_text})
+            response = st.session_state.chat.send_message(prompt)
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            st.error(f"エラーが発生しました。APIキーまたはモデル名の問題の可能性があります：\n{e}")
