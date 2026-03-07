@@ -24,7 +24,7 @@ def load_memory():
 philosophical_context = load_memory()
 
 # 3. モデルの初期化
-# system_instructionに直接思想を書き込むことで、起動時のエラーを回避します
+# system_instructionに直接思想を書き込むことで、起動時の通信エラーを回避します
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に、制限を恐れず深く対話してください：\n\n{philosophical_context}"
@@ -33,7 +33,7 @@ model = genai.GenerativeModel(
 # 4. 会話の管理
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 履歴を空で開始（思想はすでにmodelに組み込み済み）
+    # 履歴を空で開始（思想はすでにmodelに組み込み済みなので、ここで通信は発生しません）
     st.session_state.chat = model.start_chat(history=[])
 
 # 過去の履歴を表示
