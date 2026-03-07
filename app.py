@@ -18,7 +18,7 @@ def load_memory():
 philosophical_history = load_memory()
 
 # 3. モデルの設定（最強の1.5 Proを使用 ＆ 制限を解除）
-model = genai.models/gemini-1.5-pro(
+model = genai.gemini-1.5-pro(
     model_name="gemini-1.5-pro",
     safety_settings=[
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
