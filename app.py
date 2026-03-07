@@ -26,7 +26,7 @@ philosophical_context = load_memory()
 # 3. モデルの初期化（最新の正しい指定方法）
 # 安全設定をすべて解除し、あなたの思想に深く寄り添えるようにします
 model = genai.GenerativeModel(
-    model_name="models/gemini-1.5-pro",
+    model_name="gemini-1.5-pro",
     safety_settings=[
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
