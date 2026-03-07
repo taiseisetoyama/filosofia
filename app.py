@@ -2,17 +2,17 @@ import streamlit as st
 import google.generativeai as genai
 
 # アプリの設定
-st.set_page_config(page_title="My Philosophy AI")
+st.set_page_config(page_title="My Philosophy AI", layout="centered")
 st.title("My Gemini Philosophy AI")
 
-# 1. APIキーの読み込み
+# 1. APIキーの確認
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("SecretsにGEMINI_API_KEYが設定されていません。")
+    st.error("StreamlitのSecretsにGEMINI_API_KEYが設定されていません。")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# 2. 思想データの読み込み
+# 2. 思想データの読み込み（memory.txt）
 @st.cache_data
 def load_memory():
     try:
@@ -23,9 +23,10 @@ def load_memory():
 
 philosophical_context = load_memory()
 
-# 3. モデルの初期化（安全設定を解除した1.5 Pro）
-model = "models/gemini-1.5-pro",(
-    model_name="gemini-1.5-pro",
+# 3. モデルの初期化（最新の正しい指定方法）
+# 安全設定をすべて解除し、あなたの思想に深く寄り添えるようにします
+model = genai.GenerativeModel(
+    model_name="models/gemini-1.5-pro",
     safety_settings=[
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -34,25 +35,28 @@ model = "models/gemini-1.5-pro",(
     ]
 )
 
-# 4. チャット履歴の管理
+# 4. 会話の管理
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 最初のシステム指示をチャットエンジンに渡す
+    # チャットセッションの開始
     st.session_state.chat = model.start_chat(history=[])
-    system_instruction = f"あなたは私の思想の理解者です。以下の背景を前提に対話してください：\n\n{philosophical_context}"
+    # 最初の命令として思想を教える
+    system_instruction = f"あなたは私の思想の理解者です。以下の背景を前提に、制限を恐れず深く対話してください：\n\n{philosophical_context}"
     st.session_state.chat.send_message(system_instruction)
 
-# 過去のメッセージを表示
+# 過去の履歴を表示
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 5. ユーザー入力
-if prompt := st.chat_input("対話を開始する..."):
+# 5. チャット入力欄
+if prompt := st.chat_input("思考の続きを..."):
+    # ユーザーの入力を表示
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # AIの回答を生成して表示
     with st.chat_message("assistant"):
         try:
             response = st.session_state.chat.send_message(prompt, stream=True)
@@ -64,4 +68,4 @@ if prompt := st.chat_input("対話を開始する..."):
             placeholder.markdown(full_text)
             st.session_state.messages.append({"role": "assistant", "content": full_text})
         except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            st.error(f"対話中にエラーが発生しました: {e}")
