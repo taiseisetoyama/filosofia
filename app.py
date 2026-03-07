@@ -30,7 +30,7 @@ if "messages" not in st.session_state:
     
 if "chat" not in st.session_state:
     model = genai.GenerativeModel(
-        model_name="models/gemini-1.5-flash-latest",  # ← ここをフルネームに修正
+        model_name="models/gemini-1.5-flash-latest",  # ここをフルネームに修正
         system_instruction=f"あなたは私の思想の理解者です。以下を前提に対話してください：\n\n{philosophical_context}"
     )
     st.session_state.chat = model.start_chat(history=[])
