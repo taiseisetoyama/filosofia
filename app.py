@@ -1,82 +1,123 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
+import requests
+import json
 
-# --- 1. 設定 ---
+# --- 設定 ---
 st.set_page_config(page_title="Mirror Mind", layout="wide")
-st.title("🧠 Mirror Mind: 自律進化型・思想アーカイブ")
+st.title("🧠 Mirror Mind")
 
-# API & スプレッドシートURL
+# Secretsの読み込み
 API_KEY = st.secrets["GEMINI_API_KEY"]
-SHEET_URL = st.secrets["SPREADSHEET_URL"].replace('/edit#gid=', '/export?format=csv&gid=')
-CSV_URL = st.secrets["SPREADSHEET_URL"].replace('/edit#gid=', '/export?format=csv&gid=')
+SHEET_URL = st.secrets["SPREADSHEET_URL"]
+GAS_URL = st.secrets["GAS_URL"]
+# スプレッドシートをCSVとして読み込むためのURL変換
+CSV_URL = SHEET_URL.split("/edit")[0] + "/export?format=csv&gid=0"
 
 genai.configure(api_key=API_KEY)
-MODEL_NAME = "models/gemini-1.5-flash" # 1500回/日の安定枠
 
-# --- 2. 記憶の読み書き関数（CSV変換経由で簡単接続） ---
+# 【修正ポイント】モデル名をより汎用的な書き方に変更
+MODEL_NAME = "gemini-1.5-flash" 
+
+# --- 記憶の読み込み関数 ---
 def load_memory(user_id):
     try:
-        # スプレッドシートをCSVとして読み込む
+        # スプレッドシートからデータを取得
         df = pd.read_csv(CSV_URL)
-        user_data = df[df['id'] == user_id]
+        # ID列が数値として扱われる場合があるため文字列に変換して比較
+        user_data = df[df['id'].astype(str) == str(user_id)]
+        
         if user_data.empty:
-            return "初期状態：まだ深い記憶はありません。"
-        return "\n\n".join(user_data['content'].tolist())
-    except:
-        return "memory.txtから読み込んだ初期思想..." # 失敗時はここ
+            # 記憶が空なら memory.txt を探す
+            try:
+                with open("memory.txt", "r", encoding="utf-8") as f:
+                    return f.read()
+            except:
+                return "初期思想：ここから対話を開始します。"
+        
+        # 保存されている内容を結合
+        return "\n\n".join(user_data['content'].astype(str).tolist())
+    except Exception as e:
+        return f"記憶の読み込み中にエラーが発生しました（スプレッドシートが空の可能性があります）"
 
-# --- 3. ログイン機能 ---
+# --- ログインセッション ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    user_input = st.text_input("IDを入力してください (例: a)", type="password")
+    user_input = st.text_input("IDを入力してください", type="password")
     if user_input == "a":
         st.session_state.user_id = "a"
         st.session_state.logged_in = True
-        with st.spinner("記憶を同期中..."):
+        with st.spinner("膨大な記憶を同期中..."):
             st.session_state.full_memory = load_memory("a")
         st.rerun()
     st.stop()
 
-# --- 4. メインエンジン ---
+# --- AI構築 ---
+# 5万文字の記憶をシステム命令として叩き込む
+model = genai.GenerativeModel(
+    model_name=MODEL_NAME,
+    system_instruction=f"あなたはユーザーの思想そのものです。以下の【過去の膨大な記憶】を前提に、矛盾のない、深みのある対話を行ってください。：\n\n{st.session_state.full_memory}"
+)
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# AIの構築（5万文字の記憶を前提に叩き込む）
-model = genai.GenerativeModel(
-    model_name=MODEL_NAME,
-    system_instruction=f"あなたはユーザーの分身であり、思想の守護者です。以下の【膨大な過去の記憶】を完全に把握し、矛盾のない対話を行ってください：\n\n{st.session_state.full_memory}"
-)
-chat = model.start_chat(history=[])
-
-# 画面レイアウト
+# --- 画面表示 ---
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("対話")
+    # 履歴の表示
     for m in st.session_state.messages:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
+    # 入力フォーム
     if prompt := st.chat_input("思考を深化させる..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
         
         with st.chat_message("assistant"):
-            response = chat.send_message(prompt)
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            try:
+                # エラーが起きやすい chat.send_message ではなく generate_content を使用
+                # 過去の会話の流れも数件含める
+                context_messages = st.session_state.messages[-6:] 
+                response = model.generate_content(prompt)
+                
+                if response.text:
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                else:
+                    st.error("AIからの返答が空でした。")
+            except Exception as e:
+                st.error(f"接続エラーが発生しました: {e}")
 
 with col2:
-    st.subheader("記憶の刻印")
-    if st.button("✨ 現在の対話をアーカイブへ刻印"):
-        # ここでスプレッドシートへの書き込み処理（実際にはGASや別の簡易APIを叩くのが確実）
-        st.success("記憶の断片をスプレッドシートへ送信しました（※要GAS設定）")
-        st.info("※書き込みを完全に自動化するには、スプレッドシート側で1分で終わる『GAS設定』が必要です。続けますか？")
+    st.subheader("Memory Archive")
+    if st.button("✨ 今の対話を刻印"):
+        if len(st.session_state.messages) >= 2:
+            # 直近の1往復を保存
+            recent_log = f"User: {st.session_state.messages[-2]['content']}\nAI: {st.session_state.messages[-1]['content']}"
+            data = {
+                "id": st.session_state.user_id,
+                "category": "Evolution",
+                "content": recent_log
+            }
+            try:
+                res = requests.post(GAS_URL, data=json.dumps(data))
+                if res.status_code == 200:
+                    st.success("スプレッドシートに刻印しました")
+                else:
+                    st.error(f"同期失敗: {res.status_code}")
+            except Exception as e:
+                st.error(f"通信エラー: {e}")
+        else:
+            st.warning("刻印する会話がまだありません")
 
     st.divider()
-    st.write("📖 現在の解像度（文字数）:", len(st.session_state.full_memory))
-    with st.expander("アーカイブの断片を見る"):
-        st.text(st.session_state.full_memory[:1000] + "...")
+    st.write("📖 現在の記憶量:", len(st.session_state.full_memory), "文字")
+    with st.expander("アーカイブの断片を確認"):
+        st.text(st.session_state.full_memory[:500] + "...")
