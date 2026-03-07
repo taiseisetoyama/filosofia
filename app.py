@@ -22,32 +22,33 @@ if "philosophy_base" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# --- 【重要】モデルの動的取得ロジック ---
+if "target_model" not in st.session_state:
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # 優先順位: 1.5-flash -> 1.5-flash-latest -> gemini-pro -> 最初に見つかったもの
+        candidates = ["models/gemini-1.5-flash", "models/gemini-1.5-flash-latest", "models/gemini-pro"]
+        st.session_state.target_model = next((c for c in candidates if c in available_models), available_models[0])
+    except Exception as e:
+        st.error(f"モデルの取得に失敗しました: {e}")
+        st.stop()
+
 # 4. 記憶の「再構築・圧縮」関数
 def re_encode_philosophy(current_base, recent_messages):
     context = "\n".join([f"{m['role']}: {m['content']}" for m in recent_messages])
-    
     compress_prompt = f"""
-    あなたはユーザーの思想の守護者です。
-    現在の【思想ベース】に、直近の【新しい対話】から得られた知見を統合し、
-    より洗練された「一貫性のある思想体系」としてまとめ直してください。
-    
-    【現在の思想ベース】:
-    {current_base}
-    
-    【新しい対話】:
-    {context}
-    
-    出力は、今後の対話の「前提条件」として最適な、高密度な文章にしてください。
+    あなたはユーザーの思想の守護者です。現在の【思想ベース】に、直近の【新しい対話】から得られた知見を統合し、より洗練された体系としてまとめ直してください。
+    【現在の思想ベース】:\n{current_base}\n【新しい対話】:\n{context}
     """
-    
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    # 取得した正しいモデル名を使用
+    model = genai.GenerativeModel(st.session_state.target_model)
     result = model.generate_content(compress_prompt)
     return result.text
 
 # 5. モデルの構築（常に最新の思想ベースをシステム命令に焼き付ける）
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=f"あなたは私の思想の理解者です。以下の【進化し続ける思想体系】を絶対的な前提としてください：\n\n{st.session_state.philosophy_base}"
+    model_name=st.session_state.target_model,
+    system_instruction=f"あなたは私の思想の理解者です。以下の【進化し続ける思想体系】を前提としてください：\n\n{st.session_state.philosophy_base}"
 )
 chat = model.start_chat(history=[])
 
@@ -65,27 +66,24 @@ if prompt := st.chat_input("思考を統合せよ..."):
     with st.chat_message("assistant"):
         try:
             response = chat.send_message(prompt)
-            answer = response.text
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
             
-            # 10往復（20メッセージ）ごとにブラウザ内の記憶を統合
             if len(st.session_state.messages) >= 20:
                 with st.spinner("思想を再エンコード中..."):
                     new_base = re_encode_philosophy(st.session_state.philosophy_base, st.session_state.messages)
                     st.session_state.philosophy_base = new_base
                     st.session_state.messages = st.session_state.messages[-4:]
-                    st.success("思想が統合され、AIの解像度が上がりました。")
+                    st.success("思想が統合されました。")
         except Exception as e:
             st.error(f"接続エラー: {e}")
 
 # 8. スマホでもセーブしやすくするための追加パーツ
 st.divider()
 with st.expander("💾 現在の思想（セーブ用）"):
-    st.info("これが今、AIが認識している最新の思想です。リロードで消える前にGitHubのmemory.txtに貼ると永続化されます。")
     st.code(st.session_state.philosophy_base)
 
-# サイドバーでも確認可能
 with st.sidebar:
+    st.write(f"使用中モデル: {st.session_state.target_model}")
     st.subheader("現在のAI内部OS（記憶）")
     st.write(st.session_state.philosophy_base)
