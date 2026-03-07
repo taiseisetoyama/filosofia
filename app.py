@@ -19,14 +19,15 @@ def load_memory():
         with open("memory.txt", "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
-        return f"思想データの読み込みに失敗しました: {e}"
+        return "" # ファイルがない場合は空にする
 
 philosophical_context = load_memory()
 
-# 3. モデルの初期化（最新の正しい指定方法）
-# 安全設定をすべて解除し、あなたの思想に深く寄り添えるようにします
+# 3. モデルの初期化
+# モデル名を "models/gemini-1.5-pro" に戻し、より安定した書き方にします
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
+    model_name="models/gemini-1.5-pro",
+    system_instruction=f"あなたは私の思想の理解者です。以下の背景を前提に、制限を恐れず深く対話してください：\n\n{philosophical_context}",
     safety_settings=[
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -38,11 +39,8 @@ model = genai.GenerativeModel(
 # 4. 会話の管理
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # チャットセッションの開始
+    # チャットセッションの開始（system_instructionをモデル初期化時に渡す形式に変更）
     st.session_state.chat = model.start_chat(history=[])
-    # 最初の命令として思想を教える
-    system_instruction = f"あなたは私の思想の理解者です。以下の背景を前提に、制限を恐れず深く対話してください：\n\n{philosophical_context}"
-    st.session_state.chat.send_message(system_instruction)
 
 # 過去の履歴を表示
 for msg in st.session_state.messages:
@@ -51,21 +49,22 @@ for msg in st.session_state.messages:
 
 # 5. チャット入力欄
 if prompt := st.chat_input("思考の続きを..."):
-    # ユーザーの入力を表示
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # AIの回答を生成して表示
     with st.chat_message("assistant"):
         try:
+            # 返答を生成
             response = st.session_state.chat.send_message(prompt, stream=True)
             full_text = ""
             placeholder = st.empty()
             for chunk in response:
-                full_text += chunk.text
-                placeholder.markdown(full_text + "▌")
+                if chunk.text:
+                    full_text += chunk.text
+                    placeholder.markdown(full_text + "▌")
             placeholder.markdown(full_text)
             st.session_state.messages.append({"role": "assistant", "content": full_text})
         except Exception as e:
-            st.error(f"対話中にエラーが発生しました: {e}")
+            st.error(f"エラーが発生しました: {e}")
+            st.info("APIキーが正しいか、Google AI Studioで制限がかかっていないか確認してください。")
