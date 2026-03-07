@@ -1,18 +1,17 @@
 import streamlit as st
 import google.generativeai as genai
 
-# --- ページ設定 ---
 st.set_page_config(page_title="My Philosophy AI", layout="centered")
 st.title("My Gemini Philosophy AI")
 
-# --- API設定 (Secretsから読み込み) ---
+# 1. APIキーの設定
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("SecretsにGEMINI_API_KEYを設定してください。")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 思想データの読み込み ---
+# 2. 思想データの読み込み
 @st.cache_data
 def load_memory():
     try:
@@ -23,36 +22,50 @@ def load_memory():
 
 philosophical_context = load_memory()
 
-# --- モデルとチャットの初期化 ---
-# 404エラーを避けるため、安定版のモデル名を指定します
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-    
+# 3. 利用可能なモデルを自動取得してセットアップ
 if "chat" not in st.session_state:
-    model = genai.GenerativeModel(
-        model_name="models/gemini-1.5-flash-latest",  # ここをフルネームに修正
-        system_instruction=f"あなたは私の思想の理解者です。以下を前提に対話してください：\n\n{philosophical_context}"
-    )
-    st.session_state.chat = model.start_chat(history=[])
+    try:
+        # 今のAPIキーで使えるモデルを全取得
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 優先順位をつけてモデルを選択
+        target_model = None
+        for candidate in ["models/gemini-1.5-flash", "models/gemini-1.5-flash-latest", "models/gemini-pro"]:
+            if candidate in available_models:
+                target_model = candidate
+                break
+        
+        # もし見つからなければ、リストの最初にあるやつを無理やり使う
+        if not target_model:
+            target_model = available_models[0]
+            
+        st.info(f"使用モデル: {target_model}")
+        
+        model = genai.GenerativeModel(
+            model_name=target_model,
+            system_instruction=f"あなたは私の思想の理解者です。以下を前提に対話してください：\n\n{philosophical_context}"
+        )
+        st.session_state.chat = model.start_chat(history=[])
+        st.session_state.messages = []
+    except Exception as e:
+        st.error(f"モデルの取得に失敗しました。APIキーを確認してください: {e}")
+        st.stop()
 
-# 過去の履歴を表示
+# 4. 履歴表示
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# --- チャット対話実行 ---
+# 5. 対話実行
 if prompt := st.chat_input("対話を開始..."):
-    # ユーザー入力を表示
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Geminiの返答を生成
     with st.chat_message("assistant"):
         try:
             response = st.session_state.chat.send_message(prompt)
-            answer = response.text
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error(f"接続エラーが発生しました: {e}")
