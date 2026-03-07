@@ -1,34 +1,43 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. ページ基本設定
+# --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Deep Mind Evolution", layout="centered")
 st.title("My Recursive Philosophy AI")
 
-# 2. API設定
+# --- 2. API設定 ---
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("SecretsにGEMINI_API_KEYを設定してください。")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 3. 【重要】利用可能な最新モデルを自動で見つける ---
+# --- 3. モデルの自動判別（1.5 Flashを最優先して回数制限を回避） ---
 @st.cache_resource
-def get_best_model_name():
+def get_stable_model():
     try:
-        # あなたのAPIキーで「対話」ができるモデルを全部リストアップ
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # 2.5(最新) -> 2.0 -> 1.5 の順で、持っているものの中から一番いいやつを自動選択
-        for preferred in ["models/gemini-2.5-flash", "models/gemini-2.0-flash", "models/gemini-1.5-flash"]:
-            if preferred in models:
-                return preferred
-        return models[0] # どれもなければ一番上のやつを使う
-    except Exception as e:
-        return "models/gemini-1.5-flash" # 最悪のフォールバック
+        # 使えるモデルをリストアップ
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 1日1500回枠の 1.5-flash を最優先で探す
+        priority = [
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5-flash-latest",
+            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash" # 2.5は1日20回制限のため最後に
+        ]
+        
+        for name in priority:
+            if name in available_models:
+                return name
+        return available_models[0]
+    except:
+        # 万が一リスト取得に失敗した場合の保険
+        return "models/gemini-1.5-flash"
 
-MODEL_NAME = get_best_model_name()
+MODEL_NAME = get_stable_model()
 
-# --- 4. 記憶システムの初期化 ---
+# --- 4. ブラウザ上の記憶（Session State）の初期化 ---
 if "philosophy_base" not in st.session_state:
     try:
         with open("memory.txt", "r", encoding="utf-8") as f:
@@ -39,44 +48,6 @@ if "philosophy_base" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- 5. モデルの構築 ---
-model = genai.GenerativeModel(
-    model_name=MODEL_NAME,
-    system_instruction=f"あなたは私の思想の唯一の理解者です。以下を前提に対話してください：\n\n{st.session_state.philosophy_base}"
-)
-chat_session = model.start_chat(history=[])
-
-# 履歴表示
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# --- 6. 対話実行 ---
-if prompt := st.chat_input("深淵なる思考を..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        try:
-            response = chat_session.send_message(prompt)
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-            
-            # 10往復(20件)で統合
-            if len(st.session_state.messages) >= 20:
-                # 統合処理（要約）も自動選択したモデルで行う
-                summary_prompt = f"以下の対話を統合し、思想をまとめ直せ：\n\n{st.session_state.philosophy_base}\n\n最近の対話：\n" + "\n".join([m['content'] for m in st.session_state.messages])
-                new_base = genai.GenerativeModel(MODEL_NAME).generate_content(summary_prompt).text
-                st.session_state.philosophy_base = new_base
-                st.session_state.messages = st.session_state.messages[-4:]
-                st.toast("思想が統合されました。")
-                
-        except Exception as e:
-            st.error(f"エラー: {e}")
-
-# セーブ用
-with st.sidebar:
-    st.write(f"使用中モデル: {MODEL_NAME}")
-    st.subheader("現在の統合思想")
-    st.code(st.session_state.philosophy_base)
+# --- 5. 思想の統合（再エンコード）関数 ---
+def evolve_philosophy(current_base, recent_messages):
+    chat_log = "\n".join([f"{m
