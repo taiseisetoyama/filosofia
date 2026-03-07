@@ -1,60 +1,50 @@
 import streamlit as st
 import google.generativeai as genai
 
-# --- 1. ページ設定 ---
-st.set_page_config(page_title="My Philosophy AI", layout="centered")
+# 基本設定
+st.set_page_config(page_title="Philosophy AI")
 st.title("My Gemini Philosophy AI")
 
-# --- 2. APIキーの読み込み ---
+# APIキー設定
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("StreamlitのSecretsにGEMINI_API_KEYを設定してください。")
+    st.error("SecretsにGEMINI_API_KEYを設定してください。")
     st.stop()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# --- 3. 思想データの読み込み ---
+# 思想データの読み込み
 @st.cache_data
 def load_memory():
     try:
         with open("memory.txt", "r", encoding="utf-8") as f:
             return f.read()
-    except FileNotFoundError:
-        return "思想データ(memory.txt)が見つかりません。"
+    except:
+        return ""
 
-philosophical_context = load_memory()
-
-# --- 4. セッション履歴の初期化 ---
-# ここで messages を先に作っておくことで AttributeError を防ぎます
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# モデルの初期設定（gemini-1.5-flash は NotFound になりにくい安定版です）
+# モデル設定 (NotFoundを避けるためflashモデルを使用)
 if "chat" not in st.session_state:
     model = genai.GenerativeModel(
         model_name="gemini-1.5-flash",
-        system_instruction=f"あなたは私の思想の理解者です。以下を前提に対話してください：\n\n{philosophical_context}"
+        system_instruction=f"あなたは私の思想の理解者です：\n\n{load_memory()}"
     )
     st.session_state.chat = model.start_chat(history=[])
+    st.session_state.messages = []
 
-# --- 5. 画面表示と入力 ---
-# 過去の履歴を表示
+# 履歴表示
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# チャット入力
+# 対話入力
 if prompt := st.chat_input("対話を開始..."):
-    # ユーザーの入力を表示
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Geminiの返答を生成
     with st.chat_message("assistant"):
         try:
             response = st.session_state.chat.send_message(prompt)
-            answer = response.text
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            st.error(f"エラー: {e}")
